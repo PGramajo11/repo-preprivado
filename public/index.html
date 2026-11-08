@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Registro al taller de Desarrollo Web</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="contenedor">
+    <header class="encabezado">
+      <p class="etiqueta">Universidad · Actividad de clase</p>
+      <h1>Registro al taller</h1>
+      <p>Completa tus datos para reservar un espacio.</p>
+    </header>
+
+    <section class="panel" aria-labelledby="titulo-formulario">
+      <h2 id="titulo-formulario">Datos de inscripción</h2>
+      <form id="formulario-registro">
+        <label for="nombre">Nombre completo</label>
+        <input id="nombre" name="nombre" type="text" required minlength="2" autocomplete="name">
+
+        <label for="correo">Correo electrónico</label>
+        <input id="correo" name="correo" type="email" required autocomplete="email">
+
+        <label for="taller">Taller</label>
+        <select id="taller" name="taller" required>
+          <option value="">Selecciona un taller</option>
+          <option value="HTML y CSS">HTML y CSS</option>
+          <option value="JavaScript">JavaScript</option>
+          <option value="Node.js y Express">Node.js y Express</option>
+        </select>
+
+        <!-- TODO: Agrega teléfono con type="tel", name e id relacionados. -->
+        <!-- TODO: Agrega un selector obligatorio para elegir el horario. -->
+
+        <label for="telefono">Teléfono</label>
+        <input type="tel" name="telefono" id="telefono">
+
+        <label for="horario">Horario</label>
+        <select name="horario" id="horario">
+            <option value="" disabled>SELECCIONE UN HORARIO</option>
+            <option value="1">07:00 am - 09:00 am</option>
+            <option value="2">09:00 am - 11:00 am</option>
+            <option value="2">11:00 am - 13:00 pm</option>
+            <option value="2">14:00 pm - 16:00 pm</option>
+            <option value="2">16:00 pm - 18:00 pm</option>
+        </select>
+
+        <button type="submit">Registrar inscripción</button>
+      </form>
+      <p id="mensaje" class="mensaje" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="titulo-lista">
+      <h2 id="titulo-lista">Participantes inscritos</h2>
+      <ul id="lista-inscripciones" aria-live="polite">
+        <li class="vacio">Aún no hay inscripciones.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
