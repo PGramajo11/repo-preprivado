@@ -1,71 +1,295 @@
 
 const express = require("express");
 const path = require("path");
-const { randomUUID } = require("crypto");
+const db = require("./database");
 
 const app = express();
 const PORT = 3000;
 
-// Este arreglo guarda los registros solo mientras el servidor está activo.
-const inscripciones = [];
-
-// Permite recibir datos en formato JSON.
+// Permitir recibir información en formato JSON.
 app.use(express.json());
 
-// Permite mostrar los archivos de la carpeta public.
+// Servir los archivos de la carpeta public.
 app.use(express.static(path.join(__dirname, "public")));
 
-// GET: Consultar todas las inscripciones.
-app.get("/api/inscripciones", (req, res) => {
-    res.json(inscripciones);
-});
+// Validar y preparar los datos recibidos.
+function validarInscripcion(datos) {
+    const campos = [
+        "nombre",
+        "correo",
+        "telefono",
+        "taller",
+        "horario",
+        "modalidad",
+        "nivel_experiencia"
+    ];
 
-// POST: Registrar una nueva inscripción.
-app.post("/api/inscripciones", (req, res) => {
-
-    // TODO 1: Extrae nombre, correo, telefono, taller y horario de req.body.
-    const { nombre, correo, telefono, taller, horario } = req.body || {};
-
-    // TODO 2: Revisa que todos los campos existan y no estén vacíos.
-    const campos = [nombre, correo, telefono, taller, horario];
-
-    if (
-        campos.some(campo =>
-            typeof campo !== "string" || campo.trim() === ""
-        )
-    ) {
-        return res.status(400).json({
-            mensaje: "Todos los campos son obligatorios."
-        });
+    if (!datos || typeof datos !== "object" || Array.isArray(datos)) {
+        return { error: "Los datos enviados no son válidos." };
     }
 
-    // TODO 3: Comprueba que el correo tenga un formato válido.
+    const inscripcion = {};
+
+    for (const campo of campos) {
+        if (typeof datos[campo] !== "string" || datos[campo].trim() === "") {
+            return { error: `El campo ${campo} es obligatorio.` };
+        }
+
+        inscripcion[campo] = datos[campo].trim();
+    }
+
     const formatoCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!formatoCorreo.test(correo.trim())) {
+    if (!formatoCorreo.test(inscripcion.correo)) {
+        return { error: "El correo electrónico no tiene un formato válido." };
+    }
+
+    const formatoTelefono = /^\+?[0-9\s()-]{7,20}$/;
+
+    if (!formatoTelefono.test(inscripcion.telefono)) {
+        return { error: "El teléfono no tiene un formato válido." };
+    }
+
+    return { inscripcion };
+}
+
+// Validar que el identificador sea un entero positivo.
+function obtenerId(valor) {
+    const id = Number(valor);
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        return null;
+    }
+
+    return id;
+}
+
+// GET: consultar todas las inscripciones.
+app.get("/api/inscripciones", (req, res) => {
+    try {
+        const inscripciones = db.prepare(`
+            SELECT *
+            FROM inscripciones
+            ORDER BY id DESC
+        `).all();
+
+        return res.json(inscripciones);
+    } catch (error) {
+        console.error("Error al consultar inscripciones:", error);
+        return res.status(500).json({
+            mensaje: "No fue posible consultar las inscripciones."
+        });
+    }
+});
+
+// POST: registrar una nueva inscripción.
+app.post("/api/inscripciones", (req, res) => {
+    const resultado = validarInscripcion(req.body);
+
+    if (resultado.error) {
         return res.status(400).json({
-            mensaje: "El correo electrónico no tiene un formato válido."
+            mensaje: resultado.error
         });
     }
 
-    // TODO 4: Crea un objeto con id y los cinco datos; agrégalo a inscripciones.
-    const nuevaInscripcion = {
-        id: randomUUID(),
-        nombre: nombre.trim(),
-        correo: correo.trim(),
-        telefono: telefono.trim(),
-        taller: taller.trim(),
-        horario: horario.trim()
-    };
+    try {
+        const datos = resultado.inscripcion;
 
-    inscripciones.push(nuevaInscripcion);
+        const consulta = db.prepare(`
+            INSERT INTO inscripciones (
+                nombre,
+                correo,
+                telefono,
+                taller,
+                horario,
+                modalidad,
+                nivel_experiencia
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
 
-    // TODO 5: Responde con estado 201 y el registro creado.
-    return res.status(201).json({
-        mensaje: "Inscripción registrada correctamente.",
-        inscripcion: nuevaInscripcion
-    });
+        const resultadoDB = consulta.run(
+            datos.nombre,
+            datos.correo,
+            datos.telefono,
+            datos.taller,
+            datos.horario,
+            datos.modalidad,
+            datos.nivel_experiencia
+        );
 
+        const nuevaInscripcion = db.prepare(`
+            SELECT *
+            FROM inscripciones
+            WHERE id = ?
+        `).get(Number(resultadoDB.lastInsertRowid));
+
+        return res.status(201).json({
+            mensaje: "Inscripción registrada correctamente.",
+            inscripcion: nuevaInscripcion
+        });
+    } catch (error) {
+        console.error("Error al registrar inscripción:", error);
+        return res.status(500).json({
+            mensaje: "No fue posible registrar la inscripción."
+        });
+    }
+});
+
+// PUT: actualizar una inscripción existente.
+app.put("/api/inscripciones/:id", (req, res) => {
+    const id = obtenerId(req.params.id);
+
+    if (id === null) {
+        return res.status(400).json({
+            mensaje: "El identificador de la inscripción no es válido."
+        });
+    }
+
+    const resultado = validarInscripcion(req.body);
+
+    if (resultado.error) {
+        return res.status(400).json({
+            mensaje: resultado.error
+        });
+    }
+
+    try {
+        const datos = resultado.inscripcion;
+
+        const consulta = db.prepare(`
+            UPDATE inscripciones
+            SET
+                nombre = ?,
+                correo = ?,
+                telefono = ?,
+                taller = ?,
+                horario = ?,
+                modalidad = ?,
+                nivel_experiencia = ?
+            WHERE id = ?
+        `);
+
+        const resultadoDB = consulta.run(
+            datos.nombre,
+            datos.correo,
+            datos.telefono,
+            datos.taller,
+            datos.horario,
+            datos.modalidad,
+            datos.nivel_experiencia,
+            id
+        );
+
+        if (resultadoDB.changes === 0) {
+            return res.status(404).json({
+                mensaje: "No se encontró la inscripción que deseas actualizar."
+            });
+        }
+
+        const inscripcionActualizada = db.prepare(`
+            SELECT *
+            FROM inscripciones
+            WHERE id = ?
+        `).get(id);
+
+        return res.json({
+            mensaje: "Inscripción actualizada correctamente.",
+            inscripcion: inscripcionActualizada
+        });
+    } catch (error) {
+        console.error("Error al actualizar inscripción:", error);
+        return res.status(500).json({
+            mensaje: "No fue posible actualizar la inscripción."
+        });
+    }
+});
+
+// DELETE: eliminar una inscripción.
+app.delete("/api/inscripciones/:id", (req, res) => {
+    const id = obtenerId(req.params.id);
+
+    if (id === null) {
+        return res.status(400).json({
+            mensaje: "El identificador de la inscripción no es válido."
+        });
+    }
+
+    try {
+        const resultado = db.prepare(`
+            DELETE FROM inscripciones
+            WHERE id = ?
+        `).run(id);
+
+        if (resultado.changes === 0) {
+            return res.status(404).json({
+                mensaje: "No se encontró la inscripción que deseas eliminar."
+            });
+        }
+
+        return res.json({
+            mensaje: "Inscripción eliminada correctamente."
+        });
+    } catch (error) {
+        console.error("Error al eliminar inscripción:", error);
+        return res.status(500).json({
+            mensaje: "No fue posible eliminar la inscripción."
+        });
+    }
+});
+
+// GET: obtener el resumen estadístico de las inscripciones.
+app.get("/api/reportes/resumen", (req, res) => {
+    try {
+        const total = db.prepare(`
+            SELECT COUNT(*) AS total
+            FROM inscripciones
+        `).get();
+
+        const porTaller = db.prepare(`
+            SELECT taller, COUNT(*) AS cantidad
+            FROM inscripciones
+            GROUP BY taller
+            ORDER BY cantidad DESC
+        `).all();
+
+        const porHorario = db.prepare(`
+            SELECT horario, COUNT(*) AS cantidad
+            FROM inscripciones
+            GROUP BY horario
+            ORDER BY cantidad DESC
+        `).all();
+
+        const porModalidad = db.prepare(`
+            SELECT modalidad, COUNT(*) AS cantidad
+            FROM inscripciones
+            GROUP BY modalidad
+            ORDER BY cantidad DESC
+        `).all();
+
+        return res.json({
+            total: total.total,
+            porTaller,
+            porHorario,
+            porModalidad
+        });
+    } catch (error) {
+        console.error("Error al generar reportes:", error);
+        return res.status(500).json({
+            mensaje: "No fue posible generar los reportes."
+        });
+    }
+});
+
+// Manejar solicitudes con JSON mal formado.
+app.use((error, req, res, next) => {
+    if (error instanceof SyntaxError && error.status === 400 && "body" in error) {
+        return res.status(400).json({
+            mensaje: "El contenido JSON enviado no es válido."
+        });
+    }
+
+    return next(error);
 });
 
 // Iniciar el servidor.
